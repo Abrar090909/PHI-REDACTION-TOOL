@@ -1,0 +1,46 @@
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Virtual environments
+backend/venv/
+venv/
+.venv/
+env/
+
+# spaCy models downloaded locally
+backend/models/
+
+# ── Node / Frontend ────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# ── Environment / Secrets ──────────────────────────────────
+.env
+.env.local
+*.env
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Test / Coverage ────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,18 @@
+# MedRedact — Render deployment configuration
+# Deploys the FastAPI backend as a web service.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: medredact-api
+    runtime: python
+    rootDir: backend
+    buildCommand: >
+      pip install -r requirements.txt &&
+      python -m spacy download en_core_web_sm
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+    autoDeploy: true
+    healthCheckPath: /health
