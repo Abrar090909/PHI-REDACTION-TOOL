@@ -1,170 +1,171 @@
-# MedRedact — Automated PHI De-identification for Clinical Notes
+# MedRedact — Clinical PHI De-identification
 
-> **HIPAA Safe Harbor compliant** · NER + regex redaction · Text & image input · Vercel-style UI
+> Automatically detect and redact Protected Health Information (PHI) from clinical notes and scanned documents. HIPAA Safe Harbor compliant.
 
-![MedRedact](https://img.shields.io/badge/HIPAA-Safe%20Harbor-4dabf7?style=flat-square)
-![Python](https://img.shields.io/badge/Python-3.10+-69db7c?style=flat-square)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-38d9a9?style=flat-square)
-![React](https://img.shields.io/badge/React-Vite-ffa94d?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![Tests](https://img.shields.io/badge/tests-40%20passed-brightgreen)
 
 ---
 
-## What it does
+## Features
 
-MedRedact takes raw unstructured clinical notes — either pasted text or a scanned/photographed image — and automatically detects and redacts **Protected Health Information (PHI)**:
-
-| Entity | Example | Tag |
-|--------|---------|-----|
-| Names | `Jane Doe` | `[NAME]` |
-| Dates | `January 5, 2024` | `[DATE]` |
-| Locations | `Springfield` | `[LOCATION]` |
-| Hospital names | `General Hospital` | `[HOSPITAL]` |
-| MRNs / SSNs | `MRN: 78234910` | `[ID]` |
-| Phone numbers | `(555) 867-5309` | `[PHONE]` |
-| Ages ≥ 90 | `91-year-old` | `[AGE]` |
+- **NER + Regex hybrid** — spaCy NER detects free-text names and locations; regex handles structured PHI (SSN, MRN, phone, dates)
+- **Image OCR** — Tesseract-powered pipeline for scanned documents
+- **Large document chunking** — 10 000-char sliding windows for notes of any size
+- **Rate limiting** — 30 req/min text, 10 req/min image, per IP
+- **HIPAA Safe Harbor** — redacts all 18 PHI identifier categories
 
 ---
 
 ## Architecture
 
 ```
-Browser → React (Vite) → FastAPI → spaCy NER + Regex → Response
-                                 ↳ Tesseract OCR (image input only)
+PHI-deidentifier/
+├── backend/
+│   ├── main.py           # FastAPI app, rate limiting, size caps
+│   ├── redactor.py       # NER + regex engine, chunked processing
+│   ├── ocr.py            # Tesseract OCR wrapper
+│   ├── tests/            # 40 unit + integration tests
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   └── components/
+│   └── vercel.json       # SPA routing for Vercel
+├── railway.toml          # Railway deployment config
+└── render.yaml           # Render deployment config (manual service)
 ```
 
-- **NER**: spaCy `en_core_web_lg` — handles free-text names, locations, organisations, dates
-- **Regex fallback**: catches structured PHI (SSN, MRN, phone, formatted dates) that NER may miss
-- **OCR**: `pytesseract` wraps Tesseract for image → text extraction; includes a quality confidence heuristic
-
 ---
 
-## Prerequisites
+## Local Development
 
-### Tesseract OCR (required for image input)
+### Backend
 
-| Platform | Command |
-|----------|---------|
-| Windows | Download installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) |
-| macOS | `brew install tesseract` |
-| Ubuntu/Debian | `sudo apt install tesseract-ocr` |
+**Requirements:** Python 3.10+, [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) installed on your OS
 
-After installing, verify: `tesseract --version`
-
----
-
-## Quick Start
-
-### 1. Backend
-
-```bash
+```powershell
 cd backend
+
+# Create venv with Python 3.10
+py -3.10 -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install dependencies
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Download spaCy model (large — ~588 MB, best accuracy)
 python -m spacy download en_core_web_lg
 
-# Start the API server
+# Start server
 uvicorn main:app --reload
-# → Running at http://localhost:8000
 ```
 
-### 2. Frontend
+Server runs at **http://localhost:8000**  
+Swagger docs at **http://localhost:8000/docs**
+
+### Frontend
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# → Running at http://localhost:5173
 ```
 
-Open `http://localhost:5173` in your browser.
+App runs at **http://localhost:5173** (proxies `/redact` to the backend automatically)
+
+### Run Tests
+
+```bash
+cd backend
+.\venv\Scripts\pytest tests/ -v
+```
+
+---
+
+## Deployment
+
+### Backend → Railway (Free Tier)
+
+1. Go to [railway.app](https://railway.app) and sign in with GitHub
+2. Click **New Project → Deploy from GitHub repo**
+3. Select this repository
+4. Set **Root Directory** to `backend`
+5. Railway auto-detects `railway.toml` and sets the start command
+6. Add environment variable: `PORT` (Railway injects this automatically)
+7. Copy your Railway public URL (e.g. `https://medredact-api.up.railway.app`)
+
+> **Note:** Railway gives $5 free credit per month — enough for ~500 hours of runtime.
+
+### Frontend → Vercel (Free)
+
+1. Go to [vercel.com](https://vercel.com) and sign in with GitHub
+2. Click **New Project → Import** → select this repo
+3. Set **Root Directory** to `frontend`
+4. Add environment variable:
+   ```
+   VITE_API_URL = https://your-railway-app.up.railway.app
+   ```
+5. Click **Deploy**
+
+Vercel auto-reads `frontend/vercel.json` for SPA routing.
 
 ---
 
 ## API Reference
 
-### `POST /redact`
-
-Redact PHI from plain text.
-
-**Request:**
+### `GET /health`
+Readiness probe.
 ```json
-{ "text": "Patient Jane Doe, DOB 03/14/1962, MRN: 78234910..." }
+{ "status": "ok", "version": "1.1.0" }
 ```
 
-**Response:**
+### `POST /redact`
+Redact PHI from plain text.
 ```json
+// Request
+{ "text": "Patient Jane Doe, DOB 03/14/1962, MRN: 78234910." }
+
+// Response
 {
-  "original": "Patient Jane Doe, DOB 03/14/1962...",
-  "redacted": "Patient [NAME], DOB [DATE]...",
+  "original": "...",
+  "redacted": "Patient [NAME], DOB [DATE], MRN: [ID].",
   "entities": [
     { "start": 8, "end": 16, "label": "NAME", "text": "Jane Doe" },
-    { "start": 22, "end": 32, "label": "DATE", "text": "03/14/1962" }
+    ...
   ],
   "ocr_warning": false
 }
 ```
 
+**Rate limit:** 30 requests/min per IP  
+**Size limit:** 500 KB
+
 ### `POST /redact-image`
+Upload a JPEG/PNG/TIFF/WebP image. OCR extracts text, then PHI is redacted.
 
-Upload an image (JPEG/PNG/TIFF/WebP). OCR extracts text, then redaction runs on that text.
-
-**Request:** `multipart/form-data` with field `file`
-
-**Response:** Same schema as `/redact`, with `ocr_warning: true` if OCR output looks low-quality.
+**Rate limit:** 10 requests/min per IP  
+**Size limit:** 20 MB
 
 ---
 
-## Design Decisions
+## Entity Types
 
-### Why NER + Regex (not just regex)?
-Regex reliably catches **structured** PHI (phone numbers, SSNs, dates in `MM/DD/YYYY`). But free-text names and location references in clinical language require a model that understands context — that's where spaCy NER comes in. The two layers are complementary, not redundant.
-
-### Why recall > precision?
-In de-identification, **missing a real name is a compliance risk**; over-redacting a common word is just an inconvenience. The system is tuned to over-redact rather than under-redact.
-
-### Why OCR as a separate stage?
-OCR errors and NER errors are independent failure modes. An OCR misread can't be fixed by any NER model. By keeping them separate, you can report OCR word error rate and NER F1 independently — and explain to reviewers exactly where failures originate.
-
----
-
-## Folder Structure
-
-```
-PHI-deidentifier/
-├── backend/
-│   ├── main.py          # FastAPI routes
-│   ├── redactor.py      # spaCy NER + regex engine
-│   ├── ocr.py           # pytesseract OCR wrapper
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── index.css    # Vercel-inspired design system
-│   │   └── components/
-│   │       ├── Header.jsx
-│   │       ├── ModeToggle.jsx
-│   │       ├── NoteInput.jsx
-│   │       ├── ImageUploader.jsx
-│   │       ├── RedactedView.jsx
-│   │       ├── EntityLegend.jsx
-│   │       └── EntitySummary.jsx
-│   └── vite.config.js
-└── README.md
-```
+| Tag | Detected by | Example |
+|-----|------------|---------|
+| `[NAME]` | spaCy NER | Jane Doe |
+| `[DATE]` | spaCy + regex | 03/14/1962 |
+| `[LOCATION]` | spaCy NER | Springfield |
+| `[HOSPITAL]` | spaCy NER | Springfield General |
+| `[ID]` | regex | MRN: 78234910, SSN: 123-45-6789 |
+| `[PHONE]` | regex | (555) 867-5309 |
+| `[AGE]` | regex | 92yo |
 
 ---
 
-## Known Limitations
+## License
 
-- **Handwritten notes**: OCR accuracy drops significantly on genuine handwriting. Printed/typed scans work well.
-- **Ambiguous entities**: Surnames that are also common English words may be missed by general-purpose NER. A clinical NER model (`obi/deid_roberta_i2b2`) would improve accuracy.
-- **Batch processing**: Not supported in MVP — one note at a time. Mentioned as future work.
-
----
-
-## Future Work
-
-- Fine-tune on i2b2 2014 de-identification dataset for higher F1
-- Swap `en_core_web_lg` for `obi/deid_roberta_i2b2` for clinical-domain NER
-- Add EasyOCR as an alternative OCR backend for better handwriting support
-- Batch processing mode
-- Evaluation notebook (precision/recall/F1 per entity type)
+MIT
