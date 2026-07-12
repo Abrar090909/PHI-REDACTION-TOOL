@@ -1,6 +1,8 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-spacy==3.7.6
+# spaCy pinned to 3.7.4 — last version with reliable manylinux binary wheels
+# for both Linux x86_64 and Python 3.10. Avoids blis/thinc compile failures.
+spacy==3.7.4
 python-multipart==0.0.12
 Pillow==10.4.0
 pytesseract==0.3.13
